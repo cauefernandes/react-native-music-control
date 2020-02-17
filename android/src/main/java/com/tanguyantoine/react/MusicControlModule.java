@@ -118,7 +118,7 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
     }
 
     private void updateNotificationMediaStyle() {
-        if (!(Build.MANUFACTURER.toLowerCase(Locale.getDefault()).contains("huawei") && Build.VERSION.SDK_INT < Build.VERSION_CODES.M)) {
+        if (!Build.MANUFACTURER.toLowerCase(Locale.getDefault()).contains("huawei") && Build.VERSION.SDK_INT > Build.VERSION_CODES.M) {
             MediaStyle style = new MediaStyle();
             style.setMediaSession(session.getSessionToken());
             int controlCount = 0;
@@ -129,6 +129,12 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
                 controlCount += 1;
             }
             if(hasControl(PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)) {
+                controlCount += 1;
+            }
+            if(hasControl(PlaybackStateCompat.ACTION_FAST_FORWARD)) {
+                controlCount += 1;
+            }
+            if(hasControl(PlaybackStateCompat.ACTION_REWIND)) {
                 controlCount += 1;
             }
             int[] actions = new int[controlCount];
@@ -171,6 +177,7 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         }
         nb = new NotificationCompat.Builder(context, CHANNEL_ID);
         nb.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+         nb.setPriority(NotificationCompat.PRIORITY_HIGH);
 
         updateNotificationMediaStyle();
 
@@ -191,9 +198,14 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
 
         afListener = new MusicControlAudioFocusListener(context, emitter, volume);
 
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
-            context.startForegroundService(myIntent);
-
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Try to bind the service
+            try {
+                context.bindService(myIntent, connection, Context.BIND_AUTO_CREATE);
+            }
+            catch (Exception ignored){
+                context.startForegroundService(myIntent);
+            }
         }
         else
             context.startService(myIntent);
@@ -203,6 +215,58 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         isPlaying = false;
         init = true;
     }
+    
+    // Create the service connection.
+    private ServiceConnection connection = new ServiceConnection()
+    {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service)
+        {
+            Log.w(TAG, "onServiceConnected");
+            // The binder of the service that returns the instance that is created.
+            MusicControlNotification.NotificationService.LocalBinder binder = (MusicControlNotification.NotificationService.LocalBinder) service;
+
+            // The getter method to acquire the service.
+            MusicControlNotification.NotificationService myService = binder.getService();
+
+            // getServiceIntent(context) returns the relative service intent
+            Intent myIntent = new Intent(context, MusicControlNotification.NotificationService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(myIntent);
+            } else {
+                context.startService(myIntent);
+            }
+
+            // This is the key: Without waiting Android Framework to call this method
+            // inside Service.onCreate(), immediately call here to post the notification.
+            if(MusicControlModule.INSTANCE.notification == null){
+                init();
+            }
+            Notification notification = MusicControlModule.INSTANCE.notification.prepareNotification(MusicControlModule.INSTANCE.nb, false);
+            myService.startForeground(NOTIFICATION_ID, notification);
+
+            // Release the connection to prevent leaks.
+            context.unbindService(this);
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name)
+        {
+            Log.w(TAG, "Binding has dead.");
+        }
+
+        @Override
+        public void onNullBinding(ComponentName name)
+        {
+            Log.w(TAG, "Bind was null.");
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name)
+        {
+            Log.w(TAG, "Service is disconnected..");
+        }
+    };
 
     @ReactMethod
     public synchronized void stopControl() {
@@ -555,5 +619,9 @@ public class MusicControlModule extends ReactContextBaseJavaModule implements Co
         ALWAYS,
         PAUSED,
         NEVER
+    }
+
+    public boolean isPlaying() {
+        return isPlaying;
     }
 }
