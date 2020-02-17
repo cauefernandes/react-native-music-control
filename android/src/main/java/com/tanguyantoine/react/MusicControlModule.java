@@ -6,6 +6,7 @@ import android.content.ComponentCallbacks2;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.Context;
+import android.content.ServiceConnection;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
